@@ -1,0 +1,5 @@
+{
+"device": "PDX-RN",
+"project": "CLI_Templates",
+"template": "cli_template.txt"
+}

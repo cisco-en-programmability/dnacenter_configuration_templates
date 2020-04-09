@@ -33,6 +33,10 @@ import json
 import urllib3
 import time
 import sys
+import os
+import logging
+import datetime
+import dnac_apis
 
 from urllib3.exceptions import InsecureRequestWarning  # for insecure https warnings
 from requests.auth import HTTPBasicAuth  # for Basic Auth
@@ -44,7 +48,7 @@ urllib3.disable_warnings(InsecureRequestWarning)  # disable insecure https warni
 DNAC_AUTH = HTTPBasicAuth(DNAC_USER, DNAC_PASS)
 
 
-def main(template_info):
+def main():
     """
     This script will load the file with the name {file_info}
     The file includes the information required to deploy the template. The network device hostname, the Cisco DNA Center
@@ -59,6 +63,46 @@ def main(template_info):
     :param template_info: the CLI command
     """
 
+    # the local date and time when the code will start execution
+
+    date_time = str(datetime.datetime.now().replace(microsecond=0))
+
+    print('\n\nApplication "dnacenter_config_templates.py" Run Started: ' + date_time)
+
+    # input data validation
+
+    # open the file with the device, project and template info
+    with open('template.txt', 'r') as f:
+        data = f.read()
+    template_info = json.loads(data)
+
+    print('\nThe Cisco DNA Center Template information is: \n', template_info)
+    device_hostname = template_info['device']
+    project_name = template_info['project']
+    template_name = template_info['template']
+
+    # get a Cisco DNA Center auth token
+    dnac_auth = dnac_apis.get_dnac_jwt_token(DNAC_AUTH)
+
+    # check if existing project, if not create a new project
+    project_id = dnac_apis.create_project(project_name, dnac_auth)
+    if project_id == 'none':
+        # unable to find or create the project
+        print('\nUnable to create the project: ', project_name)
+        return
+    # continue with the project id
+    print('\nThe project id for the the project with the name: ' + project_name + ' is: ' + project_id)
+
+
+    date_time = str(datetime.datetime.now().replace(microsecond=0))
+    print('\n\nEnd of Application "dnacenter_config_templates.py" Run: ' + date_time)
+    return
+
 
 if __name__ == "__main__":
+    main()
+
+"""
+if __name__ == "__main__":
     sys.exit(main(sys.argv[0]))
+"""

@@ -72,7 +72,7 @@ def get_dnac_jwt_token(dnac_auth):
 def get_all_device_info(dnac_jwt_token):
     """
     The function will return all network devices info
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: DNA C device inventory info
     """
     url = DNAC_URL + '/dna/intent/api/v1/network-device'
@@ -86,7 +86,7 @@ def get_device_info(device_id, dnac_jwt_token):
     """
     This function will retrieve all the information for the device with the DNA C device id
     :param device_id: DNA C device_id
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: device info
     """
     url = DNAC_URL + '/dna/intent/api/v1/network-device?id=' + device_id
@@ -100,7 +100,7 @@ def delete_device(device_id, dnac_jwt_token):
     """
     This function will delete the device with the {device_id} from the DNA Center inventory
     :param device_id: DNA C device_id
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: delete status
     """
     url = DNAC_URL + '/dna/intent/api/v1/network-device/' + device_id
@@ -114,7 +114,7 @@ def delete_device(device_id, dnac_jwt_token):
 def get_project_id(project_name, dnac_jwt_token):
     """
     This function will retrieve the CLI templates project id for the project with the name {project_name}
-    :param project_name: CLI project template
+    :param project_name: CLI project name
     :param dnac_jwt_token: DNA token
     :return: project id
     """
@@ -126,11 +126,52 @@ def get_project_id(project_name, dnac_jwt_token):
     return proj_id
 
 
+def create_project(project_name, dnac_jwt_token):
+    """
+    This function will create a new project with the name {project_name}.
+    - if the project exists, return the project id
+    - if the project does not exist it will create a new project, waiting for the task to be completed
+     and return the project id
+    :param project_name: project name
+    :param dnac_jwt_token: Cisco DNA Center token
+    :return: project id, or none if creating a new project fails
+    """
+
+    try:
+        project_id = get_project_id(project_name, dnac_jwt_token)
+        return project_id
+    except:
+        payload = {'name': project_name}
+        url = DNAC_URL + '/dna/intent/api/v1/template-programmer/project'
+        header = {'content-type': 'application/json', 'x-auth-token': dnac_jwt_token}
+        response = requests.post(url, data=json.dumps(payload), headers=header, verify=False)
+        task_json = response.json()
+        task_id = task_json['response']['taskId']
+        task_result = ''
+
+        # loop until the task is completed, check status every second
+        time.sleep(1)
+        while task_result == '':
+            url = DNAC_URL + '/dna/intent/api/v1/task/' + task_id
+            header = {'content-type': 'application/json', 'x-auth-token': dnac_jwt_token}
+            task_response = requests.get(url, headers=header, verify=False)
+            task_json = task_response.json()
+            task_status = task_json['response']
+            if task_status['isError'] is False:
+                task_result = 'success'
+                project_id = task_status['data']
+                return project_id
+            else:
+                if task_status['isError'] is True:
+                    task_result = 'fail'
+                    return 'none'
+
+
 def get_project_info(project_name, dnac_jwt_token):
     """
     This function will retrieve all templates associated with the project with the name {project_name}
     :param project_name: project name
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: list of all templates, including names and ids
     """
     url = DNAC_URL + '/dna/intent/api/v1/template-programmer/project?name=' + project_name
@@ -148,7 +189,7 @@ def create_commit_template(template_name, project_name, cli_template, dnac_jwt_t
     :param template_name: CLI template name
     :param project_name: Project name
     :param cli_template: CLI template text content
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return:
     """
     project_id = get_project_id(project_name, dnac_jwt_token)
@@ -199,7 +240,7 @@ def commit_template(template_id, comments, dnac_jwt_token):
     This function will commit the template with the template id {template_id}
     :param template_id: template id
     :param comments: text with comments
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return:
     """
     url = DNAC_URL + '/dna/intent/api/v1/template-programmer/template/version'
@@ -217,7 +258,7 @@ def update_commit_template(template_name, project_name, cli_template, dnac_jwt_t
     :param template_name: template name
     :param project_name: project name
     :param cli_template: CLI template text content
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return:
     """
     # get the project id
@@ -264,7 +305,7 @@ def upload_template(template_name, project_name, cli_template, dnac_jwt_token):
     :param template_name: template name
     :param project_name: project name
     :param cli_template: CLI template text content
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return:
     """
     template_id = get_template_id(template_name, project_name, dnac_jwt_token)
@@ -279,7 +320,7 @@ def delete_template(template_name, project_name, dnac_jwt_token):
     This function will delete the template with the name {template_name}
     :param template_name: template name
     :param project_name: Project name
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return:
     """
     template_id = get_template_id(template_name, project_name, dnac_jwt_token)
@@ -291,7 +332,7 @@ def delete_template(template_name, project_name, dnac_jwt_token):
 def get_all_template_info(dnac_jwt_token):
     """
     This function will return the info for all CLI templates existing on DNA C, including all their versions
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: all info for all templates
     """
     url = DNAC_URL + '/dna/intent/api/v1/template-programmer/template'
@@ -306,7 +347,7 @@ def get_template_name_info(template_name, project_name, dnac_jwt_token):
     This function will return the info for the CLI template with the name {template_name}
     :param template_name: template name
     :param project_name: Project name
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: all info for all templates
     """
     template_id = get_template_id(template_name, project_name, dnac_jwt_token)
@@ -323,7 +364,7 @@ def get_template_id(template_name, project_name, dnac_jwt_token):
     part of the project with the name {project_name}
     :param template_name: name of the template
     :param project_name: Project name
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: DNA C template id
     """
     template_list = get_project_info(project_name, dnac_jwt_token)
@@ -340,7 +381,7 @@ def get_template_id_version(template_name, project_name, dnac_jwt_token):
     part of the project with the name {project_name}
     :param template_name: name of the template
     :param project_name: Project name
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: DNA C template id for the last version
     """
     project_id = get_project_id(project_name, dnac_jwt_token)
@@ -366,7 +407,7 @@ def deploy_template(template_name, project_name, device_name, dnac_jwt_token):
     :param template_name: template name
     :param project_name: project name
     :param device_name: device hostname
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: the deployment task id
     """
     device_management_ip = get_device_management_ip(device_name, dnac_jwt_token)
@@ -392,7 +433,7 @@ def check_template_deployment_status(depl_task_id, dnac_jwt_token):
     """
     This function will check the result for the deployment of the CLI template with the id {depl_task_id}
     :param depl_task_id: template deployment id
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: status - {SUCCESS} or {FAILURE}
     """
     url = DNAC_URL + '/dna/intent/api/v1/template-programmer/template/deploy/status/' + depl_task_id
@@ -408,7 +449,7 @@ def get_client_info(client_ip, dnac_jwt_token):
     This function will retrieve all the information from the client with the IP address
     Deprecated, do not use
     :param client_ip: client IPv4 address
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: client info, or {None} if client does not found
     """
     url = DNAC_URL + '/api/v1/host?hostIp=' + client_ip
@@ -428,7 +469,7 @@ def locate_client_ip(client_ip, dnac_jwt_token):
     Call to DNA C - api/v1/host?hostIp={client_ip}
     Deprecated, do not use
     :param client_ip: Client IP Address
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: hostname, interface_name, vlan_id, or None, if the client does not exist
     """
 
@@ -446,7 +487,7 @@ def get_device_id_name(device_name, dnac_jwt_token):
     """
     This function will find the DNA C device id for the device with the name {device_name}
     :param device_name: device hostname
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return:
     """
     device_id = None
@@ -461,7 +502,7 @@ def get_device_status(device_name, dnac_jwt_token):
     """
     This function will return the reachability status for the network device with the name {device_name}
     :param device_name: device name
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: status - {UNKNOWN} to locate a device in the database,
                       {SUCCESS} device reachable
                       {FAILURE} device not reachable
@@ -481,7 +522,7 @@ def get_device_management_ip(device_name, dnac_jwt_token):
     """
     This function will find out the management IP address for the device with the name {device_name}
     :param device_name: device name
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: the management ip address
     """
     device_ip = None
@@ -496,7 +537,7 @@ def get_device_id_sn(device_sn, dnac_jwt_token):
     """
     The function will return the DNA C device id for the device with serial number {device_sn}
     :param device_sn: network device SN
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: DNA C device id
     """
     url = DNAC_URL + '/dna/intent/api/v1/network-device/serial-number/' + device_sn
@@ -511,7 +552,7 @@ def sync_device(device_name, dnac_jwt_token):
     """
     This function will sync the device configuration from the device with the name {device_name}
     :param device_name: device hostname
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: the response status code, 202 if sync initiated, and the task id
     """
     device_id = get_device_id_name(device_name, dnac_jwt_token)
@@ -527,8 +568,8 @@ def check_task_id_status(task_id, dnac_jwt_token):
     """
     This function will check the status of the task with the id {task_id}
     :param task_id: task id
-    :param dnac_jwt_token: DNA C token
-    :return: status - {SUCCESS} or {FAILURE}
+    :param dnac_jwt_token: Cisco DNA Center token
+    :return: status - {SUCCESS} or {FAILURE}, and the task status message
     """
     url = DNAC_URL + '/dna/intent/api/v1/task/' + task_id
     header = {'content-type': 'application/json', 'x-auth-token': dnac_jwt_token}
@@ -539,7 +580,7 @@ def check_task_id_status(task_id, dnac_jwt_token):
         task_result = 'SUCCESS'
     else:
         task_result = 'FAILURE'
-    return task_result
+    return task_result, task_json['response']
 
 
 def check_task_id_output(task_id, dnac_jwt_token):
@@ -572,7 +613,7 @@ def create_path_trace(src_ip, dest_ip, dnac_jwt_token):
     destination IP address {dest_ip}
     :param src_ip: Source IP address
     :param dest_ip: Destination IP address
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: DNA C path visualisation id
     """
 
@@ -594,7 +635,7 @@ def get_path_trace_info(path_id, dnac_jwt_token):
     """
     This function will return the path trace details for the path visualisation {id}
     :param path_id: DNA C path visualisation id
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: Path visualisation status, and the details in a list [device,interface_out,interface_in,device...]
     """
 
@@ -629,7 +670,7 @@ def check_ipv4_network_interface(ip_address, dnac_jwt_token):
     """
     This function will check if the provided IPv4 address is configured on any network interfaces
     :param ip_address: IPv4 address
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: None, or device_hostname and interface_name
     """
     url = DNAC_URL + '/dna/intent/api/v1/interface/ip-address/' + ip_address
@@ -653,7 +694,7 @@ def get_device_info_ip(ip_address, dnac_jwt_token):
     """
     This function will retrieve the device information for the device with the management IPv4 address {ip_address}
     :param ip_address: device management ip address
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: device information, or None
     """
     url = DNAC_URL + '/dna/intent/api/v1/network-device/ip-address/' + ip_address
@@ -670,7 +711,7 @@ def get_device_info_ip(ip_address, dnac_jwt_token):
 def get_legit_cli_command_runner(dnac_jwt_token):
     """
     This function will get all the legit CLI commands supported by the {command runner} APIs
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: list of CLI commands
     """
     url = DNAC_URL + '/dna/intent/api/v1/network-device-poller/cli/legit-reads'
@@ -747,7 +788,7 @@ def get_output_command_runner(command, device_name, dnac_jwt_token):
 def get_all_configs(dnac_jwt_token):
     """
     This function will retrieve all the devices configurations
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: Return all config files in a list
     """
     url = DNAC_URL + '/dna/intent/api/v1/network-device/config'
@@ -762,7 +803,7 @@ def get_device_config(device_name, dnac_jwt_token):
     """
     This function will get the configuration file for the device with the name {device_name}
     :param device_name: device hostname
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: configuration file
     """
     device_id = get_device_id_name(device_name, dnac_jwt_token)
@@ -778,7 +819,7 @@ def check_ipv4_address(ipv4_address, dnac_jwt_token):
     """
     This function will find if the IPv4 address is configured on any network interfaces or used by any hosts.
     :param ipv4_address: IPv4 address
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: True/False
     """
     # check against network devices interfaces
@@ -800,7 +841,7 @@ def check_ipv4_address_configs(ipv4_address, dnac_jwt_token):
     """
     This function will verify if the IPv4 address is present in any of the configurations of any devices
     :param ipv4_address: IPv4 address
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: True/False
     """
     url = DNAC_URL + '/dna/intent/api/v1/network-device/config'
@@ -874,7 +915,7 @@ def get_device_detail(device_name, epoch_time, dnac_jwt_token):
     serial number, family, software version, device health score, ... for the device with the name {device_name}
     :param device_name: device hostname
     :param epoch_time: epoch time including msec
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: detailed network device information
     """
     device_id = get_device_id_name(device_name, dnac_jwt_token)
@@ -891,7 +932,7 @@ def pnp_get_device_count(device_state, dnac_jwt_token):
     """
     This function will return the count of the PnP devices in the state {state}
     :param device_state: device state, example 'Unclaimed'
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: device count
     """
     url = DNAC_URL + '/dna/intent/api/v1/onboarding/pnp-device/count'
@@ -905,7 +946,7 @@ def pnp_get_device_count(device_state, dnac_jwt_token):
 def pnp_get_device_list(dnac_jwt_token):
     """
     This function will retrieve the PnP device list info
-    :param dnac_jwt_token: DNA C token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: PnP device info
     """
     url = DNAC_URL + '/dna/intent/api/v1/onboarding/pnp-device'
