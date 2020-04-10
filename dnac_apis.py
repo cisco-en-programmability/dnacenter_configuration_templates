@@ -61,7 +61,6 @@ def get_dnac_jwt_token(dnac_auth):
     :param dnac_auth - DNA C Basic Auth string
     :return: DNA C JWT token
     """
-
     url = DNAC_URL + '/dna/system/api/v1/auth/token'
     header = {'content-type': 'application/json'}
     response = requests.post(url, auth=dnac_auth, headers=header, verify=False)
@@ -115,15 +114,15 @@ def get_project_id(project_name, dnac_jwt_token):
     """
     This function will retrieve the CLI templates project id for the project with the name {project_name}
     :param project_name: CLI project name
-    :param dnac_jwt_token: DNA token
+    :param dnac_jwt_token: Cisco DNA Center token
     :return: project id
     """
     url = DNAC_URL + '/dna/intent/api/v1/template-programmer/project?name=' + project_name
     header = {'content-type': 'application/json', 'x-auth-token': dnac_jwt_token}
     response = requests.get(url, headers=header, verify=False)
-    proj_json = response.json()
-    proj_id = proj_json[0]['id']
-    return proj_id
+    project_json = response.json()
+    project_id = project_json[0]['id']
+    return project_id
 
 
 def create_project(project_name, dnac_jwt_token):
@@ -137,34 +136,40 @@ def create_project(project_name, dnac_jwt_token):
     :return: project id, or none if creating a new project fails
     """
 
-    try:
-        project_id = get_project_id(project_name, dnac_jwt_token)
-        return project_id
-    except:
+    # check if project exists
+    url = DNAC_URL + '/dna/intent/api/v1/template-programmer/project?name=' + project_name
+    header = {'content-type': 'application/json', 'x-auth-token': dnac_jwt_token}
+    response = requests.get(url, headers=header, verify=False)
+    project_json = response.json()
+    # if project does not exist, project_json value is []. We need to create the project
+    if project_json == []:
+        # project does not exist
         payload = {'name': project_name}
         url = DNAC_URL + '/dna/intent/api/v1/template-programmer/project'
         header = {'content-type': 'application/json', 'x-auth-token': dnac_jwt_token}
         response = requests.post(url, data=json.dumps(payload), headers=header, verify=False)
         task_json = response.json()
-        task_id = task_json['response']['taskId']
-        task_result = ''
+        task_info = task_json['response']
+        task_id = task_info['taskId']
+        task_result = check_task_id_status(task_id, dnac_jwt_token)
+        project_id = task_result['data']
+    else:
+        # project exists
+        project_id = project_json[0]['id']
+    return project_id
 
-        # loop until the task is completed, check status every second
-        time.sleep(1)
-        while task_result == '':
-            url = DNAC_URL + '/dna/intent/api/v1/task/' + task_id
-            header = {'content-type': 'application/json', 'x-auth-token': dnac_jwt_token}
-            task_response = requests.get(url, headers=header, verify=False)
-            task_json = task_response.json()
-            task_status = task_json['response']
-            if task_status['isError'] is False:
-                task_result = 'success'
-                project_id = task_status['data']
-                return project_id
-            else:
-                if task_status['isError'] is True:
-                    task_result = 'fail'
-                    return 'none'
+
+def delete_project(project_name, dnac_jwt_token):
+    """
+    This function will retrieve the CLI templates project id for the project with the name {project_name}
+    :param project_name: CLI project name
+    :param dnac_jwt_token: Cisco DNA Center token
+    :return: project id
+    """
+    project_id = get_project_id(project_name, dnac_jwt_token)
+    url = DNAC_URL + '/dna/intent/api/v1/template-programmer/project/' + project_id
+    header = {'content-type': 'application/json', 'x-auth-token': dnac_jwt_token}
+    response = requests.delete(url, headers=header, verify=False)
 
 
 def get_project_info(project_name, dnac_jwt_token):
@@ -294,14 +299,15 @@ def update_commit_template(template_name, project_name, cli_template, dnac_jwt_t
     }
     header = {'content-type': 'application/json', 'x-auth-token': dnac_jwt_token}
     response = requests.put(url, data=json.dumps(payload), headers=header, verify=False)
-
+    print(response.text)
     # commit template
-    commit_template(template_id, 'committed by Python script', dnac_jwt_token)
+    response = commit_template(template_id, 'committed by Python script', dnac_jwt_token)
+    print(response.text)
 
 
 def upload_template(template_name, project_name, cli_template, dnac_jwt_token):
     """
-    This function will create and deploy a new template if not existing, or will update an existing template.
+    This function will create, or will update an existing template, and deploy the new template
     :param template_name: template name
     :param project_name: project name
     :param cli_template: CLI template text content
@@ -400,7 +406,7 @@ def get_template_id_version(template_name, project_name, dnac_jwt_token):
     return template_id_ver
 
 
-def deploy_template(template_name, project_name, device_name, dnac_jwt_token):
+def send_deploy_template(template_name, project_name, device_name, dnac_jwt_token):
     """
     This function will deploy the template with the name {template_name} to the network device with the name
     {device_name}
@@ -410,22 +416,22 @@ def deploy_template(template_name, project_name, device_name, dnac_jwt_token):
     :param dnac_jwt_token: Cisco DNA Center token
     :return: the deployment task id
     """
-    device_management_ip = get_device_management_ip(device_name, dnac_jwt_token)
     template_id = get_template_id_version(template_name, project_name, dnac_jwt_token)
     payload = {
             "templateId": template_id,
             "targetInfo": [
                 {
-                    "id": device_management_ip,
-                    "type": "MANAGED_DEVICE_IP",
+                    "id": device_name,
+                    "type": "MANAGED_DEVICE_HOSTNAME",
                     "params": {}
                 }
             ]
         }
     url = DNAC_URL + '/dna/intent/api/v1/template-programmer/template/deploy'
     header = {'content-type': 'application/json', 'x-auth-token': dnac_jwt_token}
-    response = requests.post(url, headers=header, data=json.dumps(payload), verify=False)
-    depl_task_id = (response.json())["deploymentId"]
+    deployment = requests.post(url, headers=header, data=json.dumps(payload), verify=False)
+    deployment_json = deployment.json()
+    depl_task_id = deployment_json["deploymentId"].split(' ')[-1]
     return depl_task_id
 
 
@@ -571,16 +577,19 @@ def check_task_id_status(task_id, dnac_jwt_token):
     :param dnac_jwt_token: Cisco DNA Center token
     :return: status - {SUCCESS} or {FAILURE}, and the task status message
     """
-    url = DNAC_URL + '/dna/intent/api/v1/task/' + task_id
-    header = {'content-type': 'application/json', 'x-auth-token': dnac_jwt_token}
-    task_response = requests.get(url, headers=header, verify=False)
-    task_json = task_response.json()
-    task_status = task_json['response']['isError']
-    if not task_status:
-        task_result = 'SUCCESS'
-    else:
-        task_result = 'FAILURE'
-    return task_result, task_json['response']
+    # loop until the task is completed, check status every second
+    task_result = ''
+
+    while task_result == '':
+        time.sleep(1)
+        url = DNAC_URL + '/dna/intent/api/v1/task/' + task_id
+        header = {'content-type': 'application/json', 'x-auth-token': dnac_jwt_token}
+        task_response = requests.get(url, headers=header, verify=False)
+        task_json = task_response.json()
+        task_status = task_json['response']
+        print(task_status)
+        if 'endTime' in task_status.keys():
+            return task_status
 
 
 def check_task_id_output(task_id, dnac_jwt_token):
@@ -1037,3 +1046,9 @@ def get_physical_topology(ip_address, dnac_jwt_token):
             connected_device_hostname = None
     return connected_device_hostname, connected_port
 
+"""
+dnac_auth = get_dnac_jwt_token(DNAC_AUTH)
+project = create_project('test', dnac_auth)
+input('nay key to continue ')
+delete_project('test', dnac_auth)
+"""

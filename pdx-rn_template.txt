@@ -1,0 +1,5 @@
+!
+interface Loopback200
+ description testing Python template script
+ ip address 200.200.200.200 255.255.255.255
+!
